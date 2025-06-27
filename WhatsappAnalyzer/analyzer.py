@@ -116,7 +116,7 @@ def analyze_monthly_word_frequency(monthly_messages):
         word_counts = Counter(words)
 
         # Get top 10 most common words
-        top_words = word_counts.most_common(20)
+        top_words = word_counts.most_common(10)
 
         monthly_analysis[month] = {
             'total_messages': len(messages),
@@ -156,13 +156,14 @@ def print_analysis(monthly_analysis):
 
         print()
 
-
+FILE_PATH = r"C:\Users\User\Desktop\D25\chatFull.txt"
 def main():
     """
     Main function to run the chat analysis.
     """
     # You can change this to your transcript file path
-    file_path = input("Enter the path to your chat transcript file: ").strip()
+    # file_path = input("Enter the path to your chat transcript file: ").strip()
+    file_path =FILE_PATH
 
     if not file_path:
         file_path = "chat_transcript.txt"  # Default filename
@@ -200,6 +201,7 @@ def main():
             f.write(f"Total messages: {data['total_messages']}\n")
             f.write(f"Total words analyzed: {data['total_words']}\n")
             f.write("Top 10 most used words:\n")
+
 
             for i, (word, count) in enumerate(data['top_words'], 1):
                 f.write(f"{i:2d}. {word:<15} ({count} times)\n")
