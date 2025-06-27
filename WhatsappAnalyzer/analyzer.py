@@ -69,11 +69,27 @@ def clean_and_tokenize(text):
         'came', 'way', 'time', 'day', 'make', 'made', 'take', 'took', 'good', 'well', 'back',
         'much', 'many', 'new', 'old', 'one', 'two', 'first', 'last', 'long', 'little', 'own',
         'right', 'big', 'high', 'small', 'large', 'next', 'early', 'young', 'important',
-        'few', 'public', 'bad', 'same', 'able', 'media', 'omitted', 'null'
+        'few', 'public', 'bad', 'same', 'able'
     }
 
+    # WhatsApp system phrases to exclude
+    system_phrases = [
+
+        'this message was deleted',
+        'media omitted',
+        'null'
+    ]
+
+    # Convert to lowercase for system phrase checking
+    text_lower = text.lower()
+
+    # Filter out WhatsApp system messages
+    for phrase in system_phrases:
+        if phrase in text_lower:
+            return []  # Return empty list for system messages
+
     # Convert to lowercase and remove punctuation
-    text = text.lower()
+    text = text_lower
     text = text.translate(str.maketrans('', '', string.punctuation))
 
     # Split into words and filter out stop words and short words
@@ -100,7 +116,7 @@ def analyze_monthly_word_frequency(monthly_messages):
         word_counts = Counter(words)
 
         # Get top 10 most common words
-        top_words = word_counts.most_common(10)
+        top_words = word_counts.most_common(20)
 
         monthly_analysis[month] = {
             'total_messages': len(messages),
@@ -140,13 +156,13 @@ def print_analysis(monthly_analysis):
 
         print()
 
-FILE_PATH = r"C:\Users\User\Desktop\D25\chatFull.txt"
+
 def main():
     """
     Main function to run the chat analysis.
     """
     # You can change this to your transcript file path
-    file_path = FILE_PATH
+    file_path = input("Enter the path to your chat transcript file: ").strip()
 
     if not file_path:
         file_path = "chat_transcript.txt"  # Default filename
