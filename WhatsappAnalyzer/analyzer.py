@@ -13,12 +13,13 @@ from wordcloud import WordCloud
 
 def parse_chat_transcript(file_path):
     """
-    Parse the chat transcript and return a dictionary with messages organized by month.
+    Parse the chat transcript and return a dictionary with messages organized by month and hour data.
     """
     monthly_messages = defaultdict(list)
+    hourly_messages = defaultdict(int)
 
     # Pattern to match the chat format: month/day/year, time - Name: Message
-    pattern = r'^(\d{1,2}/\d{1,2}/\d{2,4}),\s*\d{1,2}:\d{2}\s*-\s*([^:]+):\s*(.+)$'
+    pattern = r'^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.+)$'
 
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -29,7 +30,7 @@ def parse_chat_transcript(file_path):
 
                 match = re.match(pattern, line)
                 if match:
-                    date_str, name, message = match.groups()
+                    date_str, time_str, name, message = match.groups()
 
                     # Parse the date
                     try:
@@ -40,36 +41,41 @@ def parse_chat_transcript(file_path):
                         except ValueError:
                             continue
 
+                    # Parse the time to extract hour
+                    try:
+                        time_obj = datetime.strptime(time_str, '%H:%M')
+                        hour = time_obj.hour
+                        hourly_messages[hour] += 1
+                    except ValueError:
+                        continue
+
                     # Create month key (YYYY-MM format)
                     month_key = date.strftime('%Y-%m')
                     monthly_messages[month_key].append(message)
 
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found.")
-        return {}
+        return {}, {}
     except Exception as e:
         print(f"Error reading file: {e}")
-        return {}
+        return {}, {}
 
-    return monthly_messages
+    return monthly_messages, hourly_messages
 
 
 def clean_and_tokenize(text):
     """
     Clean the text and return a list of words, excluding common stop words.
     """
-    # Common stop words to exclude (expanded list)
+    # Common stop words to exclude (removed the words from second part)
     stop_words = {
         # WhatsApp system message words to exclude
-        'deleted', 'omitted', 'media', 'message', 'image', 'video', 'audio', 'document', 'wanna', 'girl', 'feel',
-        'rlly',
-        'really', 'love', 'probably'
-        , 'sticker', 'gif', 'voice', 'null', 'none', 'was', 'edited'
+        'deleted', 'omitted', 'media', 'message', 'image', 'video', 'audio', 'document',
+        'sticker', 'gif', 'voice', 'null', 'none', 'was', 'edited'
     }
 
     # Convert to lowercase and clean whitespace
     text_clean = text.lower().strip()
-
 
     # Convert to lowercase and remove punctuation
     text = text_clean
@@ -166,7 +172,7 @@ def analyze_overall_statistics(monthly_messages):
     }
 
 
-def create_visualizations(monthly_analysis, overall_stats, output_dir):
+def create_visualizations(monthly_analysis, overall_stats, hourly_messages, output_dir):
     """
     Create various visualizations of the chat data.
     """
@@ -241,43 +247,28 @@ def create_visualizations(monthly_analysis, overall_stats, output_dir):
     p = np.poly1d(z)
     plt.plot(messages_per_month, p(messages_per_month), "r--", alpha=0.8)
 
-    # 5. Activity Heatmap (if multiple months)
-    if len(sorted_months) > 1:
-        plt.subplot(3, 3, 5)
+    # 5. Most Talked Hours (replacing heatmap)
+    plt.subplot(3, 3, 5)
+    hours = sorted(hourly_messages.keys())
+    hour_counts = [hourly_messages[hour] for hour in hours]
 
-        # Create a matrix for heatmap
-        years = sorted(list(set([date.year for date in month_dates])))
-        months = list(range(1, 13))
+    # Create hour labels (24-hour format)
+    hour_labels = [f"{hour:02d}:00" for hour in hours]
 
-        # Create matrix with NaN values
-        heatmap_data = np.full((len(years), 12), np.nan)
+    bars = plt.bar(hours, hour_counts, alpha=0.7, color='orange')
+    plt.title('Messages by Hour of Day', fontsize=14, fontweight='bold')
+    plt.xlabel('Hour of Day')
+    plt.ylabel('Number of Messages')
+    plt.xticks(hours[::2], [f"{hour:02d}:00" for hour in hours[::2]], rotation=45)  # Show every 2nd hour
+    plt.grid(True, alpha=0.3, axis='y')
 
-        for i, year in enumerate(years):
-            for month_key in sorted_months:
-                date = datetime.strptime(month_key, '%Y-%m')
-                if date.year == year:
-                    month_idx = date.month - 1
-                    heatmap_data[i, month_idx] = monthly_analysis[month_key]['total_messages']
-
-        # Create heatmap
-        im = plt.imshow(heatmap_data, cmap='YlOrRd', aspect='auto')
-        plt.title('Activity Heatmap (Messages)', fontsize=14, fontweight='bold')
-        plt.xlabel('Month')
-        plt.ylabel('Year')
-        plt.xticks(range(12), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-        plt.yticks(range(len(years)), years)
-
-        # Add colorbar
-        cbar = plt.colorbar(im)
-        cbar.set_label('Messages', rotation=270, labelpad=15)
-
-        # Add text annotations
-        for i in range(len(years)):
-            for j in range(12):
-                if not np.isnan(heatmap_data[i, j]):
-                    text = plt.text(j, i, int(heatmap_data[i, j]),
-                                    ha="center", va="center", color="black", fontsize=8)
+    # Add value labels on bars for peak hours
+    max_count = max(hour_counts) if hour_counts else 0
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        if height > max_count * 0.7:  # Only label the highest bars
+            plt.text(bar.get_x() + bar.get_width() / 2., height + max_count * 0.01,
+                     f'{int(height):,}', ha='center', va='bottom', fontsize=8)
 
     # 6. Average Words per Message
     plt.subplot(3, 3, 6)
@@ -328,6 +319,10 @@ def create_visualizations(monthly_analysis, overall_stats, output_dir):
     plt.subplot(3, 3, 9)
     plt.axis('off')
 
+    # Find peak hour
+    peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k]) if hourly_messages else 0
+    peak_hour_count = hourly_messages[peak_hour] if hourly_messages else 0
+
     # Create summary text
     summary_text = f"""
     CHAT SUMMARY STATISTICS
@@ -345,6 +340,9 @@ def create_visualizations(monthly_analysis, overall_stats, output_dir):
 
     🏆 TOP WORD: "{overall_stats['top_overall_words'][0][0]}"
     Used {overall_stats['top_overall_words'][0][1]:,} times
+
+    🕐 PEAK HOUR: {peak_hour:02d}:00
+    {peak_hour_count:,} messages
     """
 
     plt.text(0.1, 0.9, summary_text, transform=plt.gca().transAxes, fontsize=11,
@@ -379,7 +377,7 @@ def create_visualizations(monthly_analysis, overall_stats, output_dir):
         print(f"Error: {e}")
 
 
-def print_analysis(monthly_analysis, overall_stats):
+def print_analysis(monthly_analysis, overall_stats, hourly_messages):
     """
     Print the analysis results in a formatted way.
     """
@@ -404,6 +402,17 @@ def print_analysis(monthly_analysis, overall_stats):
     print("🏆 TOP 10 MOST USED WORDS (OVERALL):")
     for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
         print(f"{i:2d}. {word:<15} ({count:,} times)")
+
+    # Print hourly analysis
+    if hourly_messages:
+        print("\n🕐 HOURLY ACTIVITY:")
+        print("=" * 50)
+        sorted_hours = sorted(hourly_messages.keys())
+        peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
+        print(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)")
+        print("\nMessages by hour:")
+        for hour in sorted_hours:
+            print(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages")
 
     print("\n" + "=" * 80)
     print("MONTHLY BREAKDOWN")
@@ -446,7 +455,7 @@ def main():
     print("Processing...")
 
     # Parse the chat transcript
-    monthly_messages = parse_chat_transcript(file_path)
+    monthly_messages, hourly_messages = parse_chat_transcript(file_path)
 
     if not monthly_messages:
         print("No messages found or error reading file.")
@@ -459,11 +468,11 @@ def main():
     overall_stats = analyze_overall_statistics(monthly_messages)
 
     # Print results
-    print_analysis(monthly_analysis, overall_stats)
+    print_analysis(monthly_analysis, overall_stats, hourly_messages)
 
     # Create visualizations
     print("\nGenerating visualizations...")
-    create_visualizations(monthly_analysis, overall_stats, output_dir)
+    create_visualizations(monthly_analysis, overall_stats, hourly_messages, output_dir)
 
     # Save results to file
     output_file = f"{output_dir}/chat_analysis_results.txt"
@@ -486,6 +495,17 @@ def main():
         f.write("\nTOP 10 MOST USED WORDS (OVERALL):\n")
         for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
             f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+
+        # Write hourly analysis
+        if hourly_messages:
+            f.write("\nHOURLY ACTIVITY:\n")
+            f.write("=" * 50 + "\n")
+            sorted_hours = sorted(hourly_messages.keys())
+            peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
+            f.write(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)\n")
+            f.write("\nMessages by hour:\n")
+            for hour in sorted_hours:
+                f.write(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages\n")
 
         f.write("\n" + "=" * 80 + "\n")
         f.write("MONTHLY BREAKDOWN\n")
