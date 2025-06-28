@@ -13,13 +13,16 @@ from wordcloud import WordCloud
 
 def parse_chat_transcript(file_path):
     """
-    Parse the chat transcript and return a dictionary with messages organized by month and hour data.
+    Parse the chat transcript and return organized data including per-person statistics.
     """
     monthly_messages = defaultdict(list)
     hourly_messages = defaultdict(int)
+    person_messages = defaultdict(list)  # New: messages by person
+    person_monthly_messages = defaultdict(lambda: defaultdict(list))  # New: messages by person and month
+    person_message_counts = defaultdict(int)  # New: total message count per person
 
     # Pattern to match the chat format: month/day/year, time - Name: Message
-    pattern = r'^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.+)$'
+    pattern = r'^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.+)'
 
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -31,6 +34,9 @@ def parse_chat_transcript(file_path):
                 match = re.match(pattern, line)
                 if match:
                     date_str, time_str, name, message = match.groups()
+
+                    # Clean the name (remove extra whitespace)
+                    name = name.strip()
 
                     # Parse the date
                     try:
@@ -51,39 +57,46 @@ def parse_chat_transcript(file_path):
 
                     # Create month key (YYYY-MM format)
                     month_key = date.strftime('%Y-%m')
+
+                    # Count ALL messages (including WhatsApp system messages)
                     monthly_messages[month_key].append(message)
+                    person_messages[name].append(message)
+                    person_monthly_messages[name][month_key].append(message)
+                    person_message_counts[name] += 1
 
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found.")
-        return {}, {}
+        return {}, {}, {}, {}, {}
     except Exception as e:
         print(f"Error reading file: {e}")
-        return {}, {}
+        return {}, {}, {}, {}, {}
 
-    return monthly_messages, hourly_messages
+    return monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts
 
 
 def clean_and_tokenize(text):
     """
-    Clean the text and return a list of words, excluding common stop words.
+    Clean the text and return a list of words, excluding WhatsApp system words.
     """
-    # Common stop words to exclude (removed the words from second part)
-    stop_words = {
-        # WhatsApp system message words to exclude
+    # WhatsApp system message words to exclude from word frequency analysis
+    whatsapp_stop_words = {
         'deleted', 'omitted', 'media', 'message', 'image', 'video', 'audio', 'document',
-        'sticker', 'gif', 'voice', 'null', 'none', 'was', 'edited'
+        'sticker', 'gif', 'voice', 'null', 'none', 'was', 'edited', 'this', 'you',
+        'changed', 'security', 'code', 'tap', 'learn', 'more', 'messages', 'calls',
+        'end', 'encrypted', 'attachment', 'contact', 'location', 'poll', 'album',
+        'missed', 'call', 'ringing', 'busy', 'group', 'created', 'left', 'added',
+        'removed', 'admin', 'subject', 'description', 'picture', 'joined', 'link'
     }
 
     # Convert to lowercase and clean whitespace
     text_clean = text.lower().strip()
 
-    # Convert to lowercase and remove punctuation
-    text = text_clean
-    text = text.translate(str.maketrans('', '', string.punctuation))
+    # Remove punctuation
+    text = text_clean.translate(str.maketrans('', '', string.punctuation))
 
-    # Split into words and filter out stop words and short words
+    # Split into words and filter out WhatsApp stop words and short words
     words = [word for word in text.split()
-             if word not in stop_words and len(word) > 2 and word.isalpha()]
+             if word not in whatsapp_stop_words and len(word) > 2 and word.isalpha()]
 
     return words
 
@@ -98,7 +111,7 @@ def analyze_monthly_word_frequency(monthly_messages):
         # Combine all messages for the month
         all_text = ' '.join(messages)
 
-        # Clean and tokenize
+        # Clean and tokenize (this will exclude WhatsApp system words)
         words = clean_and_tokenize(all_text)
 
         # Count word frequencies
@@ -108,15 +121,45 @@ def analyze_monthly_word_frequency(monthly_messages):
         top_words = word_counts.most_common(10)
 
         monthly_analysis[month] = {
-            'total_messages': len(messages),
-            'total_words': len(words),
+            'total_messages': len(messages),  # Count ALL messages including system messages
+            'total_words': len(words),  # Count only meaningful words
             'top_words': top_words
         }
 
     return monthly_analysis
 
 
-def analyze_overall_statistics(monthly_messages):
+def analyze_person_statistics(person_messages, person_message_counts):
+    """
+    Analyze statistics for each person including their most used words.
+    """
+    person_analysis = {}
+
+    for person, messages in person_messages.items():
+        # Combine all messages for the person
+        all_text = ' '.join(messages)
+
+        # Clean and tokenize (excludes WhatsApp system words)
+        words = clean_and_tokenize(all_text)
+
+        # Count word frequencies
+        word_counts = Counter(words)
+
+        # Get top 10 most common words for this person
+        top_words = word_counts.most_common(10)
+
+        person_analysis[person] = {
+            'total_messages': person_message_counts[person],  # Count ALL messages
+            'total_words': len(words),  # Count only meaningful words
+            'top_words': top_words,
+            'avg_words_per_message': len(words) / person_message_counts[person] if person_message_counts[
+                                                                                       person] > 0 else 0
+        }
+
+    return person_analysis
+
+
+def analyze_overall_statistics(monthly_messages, person_message_counts):
     """
     Analyze overall chat statistics including top words across all months.
     """
@@ -128,7 +171,7 @@ def analyze_overall_statistics(monthly_messages):
     # Combine all text
     all_text = ' '.join(all_messages)
 
-    # Clean and tokenize all text
+    # Clean and tokenize all text (excludes WhatsApp system words)
     all_words = clean_and_tokenize(all_text)
 
     # Count word frequencies
@@ -172,16 +215,16 @@ def analyze_overall_statistics(monthly_messages):
     }
 
 
-def create_visualizations(monthly_analysis, overall_stats, hourly_messages, output_dir):
+def create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis, output_dir):
     """
-    Create various visualizations of the chat data.
+    Create various visualizations of the chat data including per-person statistics.
     """
     # Set style for better-looking plots
     plt.style.use('seaborn-v0_8')
     sns.set_palette("husl")
 
     # Create figure with subplots
-    fig = plt.figure(figsize=(20, 24))
+    fig = plt.figure(figsize=(24, 28))
 
     # Prepare data for plotting
     sorted_months = sorted(monthly_analysis.keys())
@@ -191,7 +234,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     month_labels = [date.strftime('%b %Y') for date in month_dates]
 
     # 1. Messages per Month (Line Chart)
-    plt.subplot(3, 3, 1)
+    plt.subplot(4, 3, 1)
     plt.plot(month_dates, messages_per_month, marker='o', linewidth=2, markersize=6)
     plt.title('Messages per Month', fontsize=14, fontweight='bold')
     plt.xlabel('Month')
@@ -201,7 +244,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
 
     # 2. Words per Month (Bar Chart)
-    plt.subplot(3, 3, 2)
+    plt.subplot(4, 3, 2)
     bars = plt.bar(range(len(month_labels)), words_per_month, alpha=0.7)
     plt.title('Words per Month', fontsize=14, fontweight='bold')
     plt.xlabel('Month')
@@ -216,7 +259,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
                  f'{int(height):,}', ha='center', va='bottom', fontsize=8)
 
     # 3. Top 10 Overall Words (Horizontal Bar Chart)
-    plt.subplot(3, 3, 3)
+    plt.subplot(4, 3, 3)
     words = [word for word, count in overall_stats['top_overall_words']]
     counts = [count for word, count in overall_stats['top_overall_words']]
     y_pos = range(len(words))
@@ -235,7 +278,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
                  f'{int(width):,}', ha='left', va='center', fontsize=9)
 
     # 4. Messages vs Words Correlation
-    plt.subplot(3, 3, 4)
+    plt.subplot(4, 3, 4)
     plt.scatter(messages_per_month, words_per_month, alpha=0.7, s=60)
     plt.title('Messages vs Words per Month', fontsize=14, fontweight='bold')
     plt.xlabel('Messages per Month')
@@ -243,35 +286,33 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     plt.grid(True, alpha=0.3)
 
     # Add trend line
-    z = np.polyfit(messages_per_month, words_per_month, 1)
-    p = np.poly1d(z)
-    plt.plot(messages_per_month, p(messages_per_month), "r--", alpha=0.8)
+    if len(messages_per_month) > 1:
+        z = np.polyfit(messages_per_month, words_per_month, 1)
+        p = np.poly1d(z)
+        plt.plot(messages_per_month, p(messages_per_month), "r--", alpha=0.8)
 
-    # 5. Most Talked Hours (replacing heatmap)
-    plt.subplot(3, 3, 5)
+    # 5. Messages by Hour of Day
+    plt.subplot(4, 3, 5)
     hours = sorted(hourly_messages.keys())
     hour_counts = [hourly_messages[hour] for hour in hours]
-
-    # Create hour labels (24-hour format)
-    hour_labels = [f"{hour:02d}:00" for hour in hours]
 
     bars = plt.bar(hours, hour_counts, alpha=0.7, color='orange')
     plt.title('Messages by Hour of Day', fontsize=14, fontweight='bold')
     plt.xlabel('Hour of Day')
     plt.ylabel('Number of Messages')
-    plt.xticks(hours[::2], [f"{hour:02d}:00" for hour in hours[::2]], rotation=45)  # Show every 2nd hour
+    plt.xticks(hours[::2], [f"{hour:02d}:00" for hour in hours[::2]], rotation=45)
     plt.grid(True, alpha=0.3, axis='y')
 
     # Add value labels on bars for peak hours
     max_count = max(hour_counts) if hour_counts else 0
     for i, bar in enumerate(bars):
         height = bar.get_height()
-        if height > max_count * 0.7:  # Only label the highest bars
+        if height > max_count * 0.7:
             plt.text(bar.get_x() + bar.get_width() / 2., height + max_count * 0.01,
                      f'{int(height):,}', ha='center', va='bottom', fontsize=8)
 
     # 6. Average Words per Message
-    plt.subplot(3, 3, 6)
+    plt.subplot(4, 3, 6)
     avg_words_per_msg = [words_per_month[i] / messages_per_month[i] if messages_per_month[i] > 0 else 0
                          for i in range(len(messages_per_month))]
 
@@ -283,28 +324,60 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     plt.grid(True, alpha=0.3)
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
 
-    # 7. Monthly Growth Rates
-    plt.subplot(3, 3, 7)
-    if len(messages_per_month) > 1:
-        growth_rates = []
-        for i in range(1, len(messages_per_month)):
-            if messages_per_month[i - 1] > 0:
-                growth = ((messages_per_month[i] - messages_per_month[i - 1]) / messages_per_month[i - 1]) * 100
-                growth_rates.append(growth)
-            else:
-                growth_rates.append(0)
+    # 7. Messages per Person (Bar Chart)
+    plt.subplot(4, 3, 7)
+    person_names = list(person_analysis.keys())
+    person_message_counts = [person_analysis[person]['total_messages'] for person in person_names]
 
-        colors = ['red' if x < 0 else 'green' for x in growth_rates]
-        plt.bar(range(len(growth_rates)), growth_rates, color=colors, alpha=0.7)
-        plt.title('Month-over-Month Growth Rate (%)', fontsize=14, fontweight='bold')
-        plt.xlabel('Month')
-        plt.ylabel('Growth Rate (%)')
-        plt.xticks(range(len(growth_rates)), month_labels[1:], rotation=45)
-        plt.grid(True, alpha=0.3, axis='y')
-        plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+    bars = plt.bar(range(len(person_names)), person_message_counts, alpha=0.7, color='purple')
+    plt.title('Total Messages per Person', fontsize=14, fontweight='bold')
+    plt.xlabel('Person')
+    plt.ylabel('Number of Messages')
+    plt.xticks(range(len(person_names)), person_names, rotation=45)
+    plt.grid(True, alpha=0.3, axis='y')
 
-    # 8. Cumulative Messages Over Time
-    plt.subplot(3, 3, 8)
+    # Add value labels on bars
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_message_counts) * 0.01,
+                 f'{int(height):,}', ha='center', va='bottom', fontsize=8)
+
+    # 8. Words per Person (Bar Chart)
+    plt.subplot(4, 3, 8)
+    person_word_counts = [person_analysis[person]['total_words'] for person in person_names]
+
+    bars = plt.bar(range(len(person_names)), person_word_counts, alpha=0.7, color='teal')
+    plt.title('Total Words per Person', fontsize=14, fontweight='bold')
+    plt.xlabel('Person')
+    plt.ylabel('Number of Words')
+    plt.xticks(range(len(person_names)), person_names, rotation=45)
+    plt.grid(True, alpha=0.3, axis='y')
+
+    # Add value labels on bars
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_word_counts) * 0.01,
+                 f'{int(height):,}', ha='center', va='bottom', fontsize=8)
+
+    # 9. Average Words per Message by Person
+    plt.subplot(4, 3, 9)
+    person_avg_words = [person_analysis[person]['avg_words_per_message'] for person in person_names]
+
+    bars = plt.bar(range(len(person_names)), person_avg_words, alpha=0.7, color='coral')
+    plt.title('Average Words per Message by Person', fontsize=14, fontweight='bold')
+    plt.xlabel('Person')
+    plt.ylabel('Average Words per Message')
+    plt.xticks(range(len(person_names)), person_names, rotation=45)
+    plt.grid(True, alpha=0.3, axis='y')
+
+    # Add value labels on bars
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_avg_words) * 0.01,
+                 f'{height:.1f}', ha='center', va='bottom', fontsize=8)
+
+    # 10. Cumulative Messages Over Time
+    plt.subplot(4, 3, 10)
     cumulative_messages = np.cumsum(messages_per_month)
     plt.plot(month_dates, cumulative_messages, marker='o', linewidth=3, markersize=6, color='purple')
     plt.fill_between(month_dates, cumulative_messages, alpha=0.3, color='purple')
@@ -315,13 +388,25 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     plt.grid(True, alpha=0.3)
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
 
-    # 9. Summary Statistics Box
-    plt.subplot(3, 3, 9)
+    # 11. Message Share by Person (Pie Chart)
+    plt.subplot(4, 3, 11)
+    colors = plt.cm.Set3(np.linspace(0, 1, len(person_names)))
+    wedges, texts, autotexts = plt.pie(person_message_counts, labels=person_names, autopct='%1.1f%%',
+                                       colors=colors, startangle=90)
+    plt.title('Message Share by Person', fontsize=14, fontweight='bold')
+
+    # 12. Summary Statistics Box
+    plt.subplot(4, 3, 12)
     plt.axis('off')
 
     # Find peak hour
     peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k]) if hourly_messages else 0
     peak_hour_count = hourly_messages[peak_hour] if hourly_messages else 0
+
+    # Find most active person
+    most_active_person = max(person_analysis.keys(),
+                             key=lambda k: person_analysis[k]['total_messages']) if person_analysis else "N/A"
+    most_active_count = person_analysis[most_active_person]['total_messages'] if person_analysis else 0
 
     # Create summary text
     summary_text = f"""
@@ -330,7 +415,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
     📊 Total Messages: {overall_stats['total_messages']:,}
     📝 Total Words: {overall_stats['total_words']:,}
     📅 Months Analyzed: {overall_stats['total_months']}
-    📆 Approximate Days: {overall_stats['total_days']}
+    👥 People in Chat: {len(person_analysis)}
 
     📈 AVERAGES:
     • Messages/Month: {overall_stats['avg_messages_per_month']:.1f}
@@ -343,9 +428,12 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
 
     🕐 PEAK HOUR: {peak_hour:02d}:00
     {peak_hour_count:,} messages
+
+    👑 MOST ACTIVE: {most_active_person}
+    {most_active_count:,} messages
     """
 
-    plt.text(0.1, 0.9, summary_text, transform=plt.gca().transAxes, fontsize=11,
+    plt.text(0.1, 0.9, summary_text, transform=plt.gca().transAxes, fontsize=10,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
     plt.tight_layout()
@@ -377,9 +465,9 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, outp
         print(f"Error: {e}")
 
 
-def print_analysis(monthly_analysis, overall_stats, hourly_messages):
+def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     """
-    Print the analysis results in a formatted way.
+    Print the analysis results in a formatted way including per-person statistics.
     """
     print("=" * 80)
     print("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS")
@@ -392,6 +480,7 @@ def print_analysis(monthly_analysis, overall_stats, hourly_messages):
     print(f"Total words analyzed: {overall_stats['total_words']:,}")
     print(f"Total months analyzed: {overall_stats['total_months']}")
     print(f"Approximate total days: {overall_stats['total_days']}")
+    print(f"Number of people in chat: {len(person_analysis)}")
     print()
     print("📊 AVERAGES:")
     print(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}")
@@ -402,6 +491,26 @@ def print_analysis(monthly_analysis, overall_stats, hourly_messages):
     print("🏆 TOP 10 MOST USED WORDS (OVERALL):")
     for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
         print(f"{i:2d}. {word:<15} ({count:,} times)")
+
+    # Print per-person statistics
+    print("\n" + "=" * 80)
+    print("PER-PERSON STATISTICS")
+    print("=" * 80)
+
+    # Sort people by message count (descending)
+    sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
+
+    for person, data in sorted_people:
+        print(f"\n👤 {person}")
+        print("-" * 50)
+        print(f"Total messages: {data['total_messages']:,}")
+        print(f"Total words: {data['total_words']:,}")
+        print(f"Average words per message: {data['avg_words_per_message']:.1f}")
+        print(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%")
+        print("\nTop 10 most used words:")
+
+        for i, (word, count) in enumerate(data['top_words'], 1):
+            print(f"{i:2d}. {word:<15} ({count:,} times)")
 
     # Print hourly analysis
     if hourly_messages:
@@ -455,7 +564,8 @@ def main():
     print("Processing...")
 
     # Parse the chat transcript
-    monthly_messages, hourly_messages = parse_chat_transcript(file_path)
+    monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts = parse_chat_transcript(
+        file_path)
 
     if not monthly_messages:
         print("No messages found or error reading file.")
@@ -464,15 +574,18 @@ def main():
     # Analyze word frequency
     monthly_analysis = analyze_monthly_word_frequency(monthly_messages)
 
+    # Analyze per-person statistics
+    person_analysis = analyze_person_statistics(person_messages, person_message_counts)
+
     # Analyze overall statistics
-    overall_stats = analyze_overall_statistics(monthly_messages)
+    overall_stats = analyze_overall_statistics(monthly_messages, person_message_counts)
 
     # Print results
-    print_analysis(monthly_analysis, overall_stats, hourly_messages)
+    print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis)
 
     # Create visualizations
     print("\nGenerating visualizations...")
-    create_visualizations(monthly_analysis, overall_stats, hourly_messages, output_dir)
+    create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis, output_dir)
 
     # Save results to file
     output_file = f"{output_dir}/chat_analysis_results.txt"
@@ -487,6 +600,7 @@ def main():
         f.write(f"Total words analyzed: {overall_stats['total_words']:,}\n")
         f.write(f"Total months analyzed: {overall_stats['total_months']}\n")
         f.write(f"Approximate total days: {overall_stats['total_days']}\n")
+        f.write(f"Number of people in chat: {len(person_analysis)}\n")
         f.write("\nAVERAGES:\n")
         f.write(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}\n")
         f.write(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}\n")
@@ -495,6 +609,25 @@ def main():
         f.write("\nTOP 10 MOST USED WORDS (OVERALL):\n")
         for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
             f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+
+        # Write per-person statistics
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("PER-PERSON STATISTICS\n")
+        f.write("=" * 80 + "\n")
+
+        sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
+        for person, data in sorted_people:
+            f.write(f"\n{person}\n")
+            f.write("-" * 50 + "\n")
+            f.write(f"Total messages: {data['total_messages']:,}\n")
+            f.write(f"Total words: {data['total_words']:,}\n")
+            f.write(f"Average words per message: {data['avg_words_per_message']:.1f}\n")
+            f.write(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%\n")
+            f.write("Top 10 most used words:\n")
+
+            for i, (word, count) in enumerate(data['top_words'], 1):
+                f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+            f.write("\n")
 
         # Write hourly analysis
         if hourly_messages:
