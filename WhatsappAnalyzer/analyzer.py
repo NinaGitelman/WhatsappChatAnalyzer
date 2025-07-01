@@ -1,3 +1,4 @@
+import os
 import re
 from collections import defaultdict, Counter
 from datetime import datetime
@@ -549,8 +550,8 @@ def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_anal
         print()
 
 
-FILE_PATH = r"C:\Users\User\Desktop\D25\chatFull.txt"
-OUTPUT_DIR = r"C:\Users\User\Desktop\D25"
+FILE_PATH = "test_chat.txt"  # Relative path
+OUTPUT_DIR = "output"  # Will create output folder in current directory
 
 
 def main():
@@ -559,6 +560,9 @@ def main():
     """
     file_path = FILE_PATH
     output_dir = OUTPUT_DIR
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
 
     print(f"Analyzing chat transcript: {file_path}")
     print("Processing...")
@@ -588,85 +592,90 @@ def main():
     create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis, output_dir)
 
     # Save results to file
-    output_file = f"{output_dir}/chat_analysis_results.txt"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS\n")
-        f.write("=" * 80 + "\n\n")
+    output_file = os.path.join(output_dir, "chat_analysis_results.txt")
 
-        # Write overall statistics
-        f.write("OVERALL STATISTICS\n")
-        f.write("=" * 50 + "\n")
-        f.write(f"Total messages: {overall_stats['total_messages']:,}\n")
-        f.write(f"Total words analyzed: {overall_stats['total_words']:,}\n")
-        f.write(f"Total months analyzed: {overall_stats['total_months']}\n")
-        f.write(f"Approximate total days: {overall_stats['total_days']}\n")
-        f.write(f"Number of people in chat: {len(person_analysis)}\n")
-        f.write("\nAVERAGES:\n")
-        f.write(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}\n")
-        f.write(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}\n")
-        f.write(f"Average messages per day: {overall_stats['avg_messages_per_day']:.1f}\n")
-        f.write(f"Average words per day: {overall_stats['avg_words_per_day']:.1f}\n")
-        f.write("\nTOP 10 MOST USED WORDS (OVERALL):\n")
-        for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
-            f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS\n")
+            f.write("=" * 80 + "\n\n")
 
-        # Write per-person statistics
-        f.write("\n" + "=" * 80 + "\n")
-        f.write("PER-PERSON STATISTICS\n")
-        f.write("=" * 80 + "\n")
-
-        sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
-        for person, data in sorted_people:
-            f.write(f"\n{person}\n")
-            f.write("-" * 50 + "\n")
-            f.write(f"Total messages: {data['total_messages']:,}\n")
-            f.write(f"Total words: {data['total_words']:,}\n")
-            f.write(f"Average words per message: {data['avg_words_per_message']:.1f}\n")
-            f.write(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%\n")
-            f.write("Top 10 most used words:\n")
-
-            for i, (word, count) in enumerate(data['top_words'], 1):
-                f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
-            f.write("\n")
-
-        # Write hourly analysis
-        if hourly_messages:
-            f.write("\nHOURLY ACTIVITY:\n")
+            # Write overall statistics
+            f.write("OVERALL STATISTICS\n")
             f.write("=" * 50 + "\n")
-            sorted_hours = sorted(hourly_messages.keys())
-            peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
-            f.write(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)\n")
-            f.write("\nMessages by hour:\n")
-            for hour in sorted_hours:
-                f.write(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages\n")
-
-        f.write("\n" + "=" * 80 + "\n")
-        f.write("MONTHLY BREAKDOWN\n")
-        f.write("=" * 80 + "\n\n")
-
-        sorted_months = sorted(monthly_analysis.keys())
-        for month in sorted_months:
-            data = monthly_analysis[month]
-            month_obj = datetime.strptime(month, '%Y-%m')
-            readable_month = month_obj.strftime('%B %Y')
-
-            f.write(f"{readable_month}\n")
-            f.write("-" * 40 + "\n")
-            f.write(f"Total messages: {data['total_messages']:,}\n")
-            f.write(f"Total words analyzed: {data['total_words']:,}\n")
-            f.write("Top 10 most used words:\n")
-
-            for i, (word, count) in enumerate(data['top_words'], 1):
+            f.write(f"Total messages: {overall_stats['total_messages']:,}\n")
+            f.write(f"Total words analyzed: {overall_stats['total_words']:,}\n")
+            f.write(f"Total months analyzed: {overall_stats['total_months']}\n")
+            f.write(f"Approximate total days: {overall_stats['total_days']}\n")
+            f.write(f"Number of people in chat: {len(person_analysis)}\n")
+            f.write("\nAVERAGES:\n")
+            f.write(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}\n")
+            f.write(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}\n")
+            f.write(f"Average messages per day: {overall_stats['avg_messages_per_day']:.1f}\n")
+            f.write(f"Average words per day: {overall_stats['avg_words_per_day']:.1f}\n")
+            f.write("\nTOP 10 MOST USED WORDS (OVERALL):\n")
+            for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
                 f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
 
-            f.write("\n")
+            # Write per-person statistics
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("PER-PERSON STATISTICS\n")
+            f.write("=" * 80 + "\n")
 
-    print(f"\nResults saved to: {output_file}")
-    print(f"Visualizations saved to: {output_dir}")
-    print("Files created:")
-    print("- chat_analysis_dashboard.png")
-    print("- word_cloud.png")
-    print("- chat_analysis_results.txt")
+            sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
+            for person, data in sorted_people:
+                f.write(f"\n{person}\n")
+                f.write("-" * 50 + "\n")
+                f.write(f"Total messages: {data['total_messages']:,}\n")
+                f.write(f"Total words: {data['total_words']:,}\n")
+                f.write(f"Average words per message: {data['avg_words_per_message']:.1f}\n")
+                f.write(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%\n")
+                f.write("Top 10 most used words:\n")
+
+                for i, (word, count) in enumerate(data['top_words'], 1):
+                    f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+                f.write("\n")
+
+            # Write hourly analysis
+            if hourly_messages:
+                f.write("\nHOURLY ACTIVITY:\n")
+                f.write("=" * 50 + "\n")
+                sorted_hours = sorted(hourly_messages.keys())
+                peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
+                f.write(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)\n")
+                f.write("\nMessages by hour:\n")
+                for hour in sorted_hours:
+                    f.write(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages\n")
+
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("MONTHLY BREAKDOWN\n")
+            f.write("=" * 80 + "\n\n")
+
+            sorted_months = sorted(monthly_analysis.keys())
+            for month in sorted_months:
+                data = monthly_analysis[month]
+                month_obj = datetime.strptime(month, '%Y-%m')
+                readable_month = month_obj.strftime('%B %Y')
+
+                f.write(f"{readable_month}\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"Total messages: {data['total_messages']:,}\n")
+                f.write(f"Total words analyzed: {data['total_words']:,}\n")
+                f.write("Top 10 most used words:\n")
+
+                for i, (word, count) in enumerate(data['top_words'], 1):
+                    f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+
+                f.write("\n")
+
+        print(f"\nResults saved to: {output_file}")
+        print(f"Visualizations saved to: {output_dir}")
+        print("Files created:")
+        print("- chat_analysis_dashboard.png")
+        print("- word_cloud.png")
+        print("- chat_analysis_results.txt")
+
+    except Exception as e:
+        print(f"Error writing results file: {e}")
 
 
 if __name__ == "__main__":
