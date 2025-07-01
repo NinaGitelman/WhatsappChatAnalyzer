@@ -11,11 +11,18 @@ import pandas as pd
 import numpy as np
 from wordcloud import WordCloud
 
+def is_system_message(line):
+    whatsapp_phrases = ["<Media omitted>", "You deleted this message", "This message was edited", "This message was deleted"]
+    for phrase in whatsapp_phrases:
+        if phrase in line:
+            return True
+    return False
 
 def parse_chat_transcript(file_path):
     """
     Parse the chat transcript and return organized data including per-person statistics.
     """
+
     monthly_messages = defaultdict(list)
     hourly_messages = defaultdict(int)
     person_messages = defaultdict(list)  # New: messages by person
@@ -29,7 +36,7 @@ def parse_chat_transcript(file_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
-                if not line:
+                if not line or is_system_message(line):
                     continue
 
                 match = re.match(pattern, line)
@@ -79,15 +86,7 @@ def clean_and_tokenize(text):
     """
     Clean the text and return a list of words, excluding WhatsApp system words.
     """
-    # WhatsApp system message words to exclude from word frequency analysis
-    whatsapp_stop_words = {
-        'deleted', 'omitted', 'media', 'message', 'image', 'video', 'audio', 'document',
-        'sticker', 'gif', 'voice', 'null', 'none', 'was', 'edited', 'this', 'you',
-        'changed', 'security', 'code', 'tap', 'learn', 'more', 'messages', 'calls',
-        'end', 'encrypted', 'attachment', 'contact', 'location', 'poll', 'album',
-        'missed', 'call', 'ringing', 'busy', 'group', 'created', 'left', 'added',
-        'removed', 'admin', 'subject', 'description', 'picture', 'joined', 'link'
-    }
+
 
     # Convert to lowercase and clean whitespace
     text_clean = text.lower().strip()
@@ -97,7 +96,7 @@ def clean_and_tokenize(text):
 
     # Split into words and filter out WhatsApp stop words and short words
     words = [word for word in text.split()
-             if word not in whatsapp_stop_words and len(word) > 2 and word.isalpha()]
+             if len(word) > 2 and word.isalpha()]
 
     return words
 
@@ -570,6 +569,9 @@ def main():
     # Parse the chat transcript
     monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts = parse_chat_transcript(
         file_path)
+
+    print(monthly_messages )
+    print("\n\n\n\n\n")
 
     if not monthly_messages:
         print("No messages found or error reading file.")
