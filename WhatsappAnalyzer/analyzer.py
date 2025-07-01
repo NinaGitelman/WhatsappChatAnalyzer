@@ -412,24 +412,24 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, pers
     summary_text = f"""
     CHAT SUMMARY STATISTICS
 
-    📊 Total Messages: {overall_stats['total_messages']:,}
-    📝 Total Words: {overall_stats['total_words']:,}
-    📅 Months Analyzed: {overall_stats['total_months']}
-    👥 People in Chat: {len(person_analysis)}
+    Total Messages: {overall_stats['total_messages']:,}
+    Total Words: {overall_stats['total_words']:,}
+    Months Analyzed: {overall_stats['total_months']}
+    People in Chat: {len(person_analysis)}
 
-    📈 AVERAGES:
+    AVERAGES:
     • Messages/Month: {overall_stats['avg_messages_per_month']:.1f}
     • Words/Month: {overall_stats['avg_words_per_month']:.1f}
     • Messages/Day: {overall_stats['avg_messages_per_day']:.1f}
     • Words/Day: {overall_stats['avg_words_per_day']:.1f}
 
-    🏆 TOP WORD: "{overall_stats['top_overall_words'][0][0]}"
+    TOP WORD: "{overall_stats['top_overall_words'][0][0]}"
     Used {overall_stats['top_overall_words'][0][1]:,} times
 
-    🕐 PEAK HOUR: {peak_hour:02d}:00
+    PEAK HOUR: {peak_hour:02d}:00
     {peak_hour_count:,} messages
 
-    👑 MOST ACTIVE: {most_active_person}
+    MOST ACTIVE: {most_active_person}
     {most_active_count:,} messages
     """
 
@@ -570,8 +570,6 @@ def main():
     monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts = parse_chat_transcript(
         file_path)
 
-    print(monthly_messages )
-    print("\n\n\n\n\n")
 
     if not monthly_messages:
         print("No messages found or error reading file.")
