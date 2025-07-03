@@ -488,4 +488,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-# to run locally do  streamlit run analyzer.py
