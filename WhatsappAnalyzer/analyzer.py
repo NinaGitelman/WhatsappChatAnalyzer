@@ -12,7 +12,7 @@ import numpy as np
 from wordcloud import WordCloud
 import streamlit as st
 import plotly.express as px
-
+import plotly.graph_objects as go
 def is_system_message(line):
     whatsapp_phrases = ["<Media omitted>", "You deleted this message", "This message was edited",
                         "This message was deleted"]
@@ -203,8 +203,6 @@ def analyze_overall_statistics(monthly_messages, person_message_counts):
         'all_words': all_words,
         'overall_word_counts': overall_word_counts
     }
-
-
 def create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     st.subheader("📊 Chat Visualizations")
 
@@ -234,9 +232,21 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, pers
     st.plotly_chart(px.line(df_monthly, x="Date", y="Avg Words per Message", markers=True,
                             title="Average Words per Message (Monthly)"), use_container_width=True)
 
-    # Messages vs. Words per Month (Scatter + Trendline)
-    st.plotly_chart(px.scatter(df_monthly, x="Messages", y="Words", trendline="ols",
-                               title="Messages vs. Words per Month"), use_container_width=True)
+    # Messages vs. Words per Month (Scatter + Trendline using NumPy)
+    x = df_monthly["Messages"]
+    y = df_monthly["Words"]
+    slope, intercept = np.polyfit(x, y, 1)
+    trendline_y = slope * x + intercept
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name='Data',
+                             marker=dict(size=8, color='blue')))
+    fig.add_trace(go.Scatter(x=x, y=trendline_y, mode='lines', name='Trendline',
+                             line=dict(color='red', dash='dash')))
+    fig.update_layout(title="Messages vs. Words per Month",
+                      xaxis_title="Messages", yaxis_title="Words")
+    st.plotly_chart(fig, use_container_width=True)
 
     # Cumulative Messages Over Time
     df_monthly["Cumulative Messages"] = df_monthly["Messages"].cumsum()
@@ -320,6 +330,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, pers
     except Exception as e:
         st.error("⚠️ Could not generate word cloud. Make sure the `wordcloud` package is installed.")
         st.write(f"Error: {e}")
+
 
 def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     """
@@ -423,12 +434,12 @@ def start_analysis(lines):
     # Analyze overall statistics
     overall_stats = analyze_overall_statistics(monthly_messages, person_message_counts)
 
-    # Print results
-    print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis)
-
     # Create visualizations
     st.write("\nGenerating visualizations...")
     create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis)
+
+    # Print results
+    print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis)
 
 
 def main():
