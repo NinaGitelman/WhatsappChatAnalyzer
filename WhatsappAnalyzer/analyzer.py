@@ -10,74 +10,65 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 from wordcloud import WordCloud
+import streamlit as st
+
 
 def is_system_message(line):
-    whatsapp_phrases = ["<Media omitted>", "You deleted this message", "This message was edited", "This message was deleted"]
+    whatsapp_phrases = ["<Media omitted>", "You deleted this message", "This message was edited",
+                        "This message was deleted"]
     for phrase in whatsapp_phrases:
         if phrase in line:
             return True
     return False
 
-def parse_chat_transcript(file_path):
+
+def parse_chat_transcript(lines):
     """
     Parse the chat transcript and return organized data including per-person statistics.
+    Takes a list of lines from an uploaded WhatsApp .txt file.
     """
 
     monthly_messages = defaultdict(list)
     hourly_messages = defaultdict(int)
-    person_messages = defaultdict(list)  # New: messages by person
-    person_monthly_messages = defaultdict(lambda: defaultdict(list))  # New: messages by person and month
-    person_message_counts = defaultdict(int)  # New: total message count per person
+    person_messages = defaultdict(list)
+    person_monthly_messages = defaultdict(lambda: defaultdict(list))
+    person_message_counts = defaultdict(int)
 
-    # Pattern to match the chat format: month/day/year, time - Name: Message
     pattern = r'^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.+)'
 
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                if not line or is_system_message(line):
+    for line in lines:
+        line = line.strip()
+        if not line or is_system_message(line):
+            continue
+
+        match = re.match(pattern, line)
+        if match:
+            date_str, time_str, name, message = match.groups()
+            name = name.strip()
+
+            # Parse the date
+            try:
+                date = datetime.strptime(date_str, '%m/%d/%y')
+            except ValueError:
+                try:
+                    date = datetime.strptime(date_str, '%m/%d/%Y')
+                except ValueError:
                     continue
 
-                match = re.match(pattern, line)
-                if match:
-                    date_str, time_str, name, message = match.groups()
+            # Parse time for hour
+            try:
+                time_obj = datetime.strptime(time_str, '%H:%M')
+                hour = time_obj.hour
+                hourly_messages[hour] += 1
+            except ValueError:
+                continue
 
-                    # Clean the name (remove extra whitespace)
-                    name = name.strip()
+            month_key = date.strftime('%Y-%m')
 
-                    # Parse the date
-                    try:
-                        date = datetime.strptime(date_str, '%m/%d/%y')
-                    except ValueError:
-                        try:
-                            date = datetime.strptime(date_str, '%m/%d/%Y')
-                        except ValueError:
-                            continue
-
-                    # Parse the time to extract hour
-                    try:
-                        time_obj = datetime.strptime(time_str, '%H:%M')
-                        hour = time_obj.hour
-                        hourly_messages[hour] += 1
-                    except ValueError:
-                        continue
-
-                    # Create month key (YYYY-MM format)
-                    month_key = date.strftime('%Y-%m')
-
-                    # Count ALL messages (including WhatsApp system messages)
-                    monthly_messages[month_key].append(message)
-                    person_messages[name].append(message)
-                    person_monthly_messages[name][month_key].append(message)
-                    person_message_counts[name] += 1
-
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
-        return {}, {}, {}, {}, {}
-    except Exception as e:
-        print(f"Error reading file: {e}")
-        return {}, {}, {}, {}, {}
+            monthly_messages[month_key].append(message)
+            person_messages[name].append(message)
+            person_monthly_messages[name][month_key].append(message)
+            person_message_counts[name] += 1
 
     return monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts
 
@@ -86,7 +77,6 @@ def clean_and_tokenize(text):
     """
     Clean the text and return a list of words, excluding WhatsApp system words.
     """
-
 
     # Convert to lowercase and clean whitespace
     text_clean = text.lower().strip()
@@ -215,7 +205,7 @@ def analyze_overall_statistics(monthly_messages, person_message_counts):
     }
 
 
-def create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis, output_dir):
+def create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     """
     Create various visualizations of the chat data including per-person statistics.
     """
@@ -437,8 +427,7 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, pers
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/chat_analysis_dashboard.png', dpi=300, bbox_inches='tight')
-    plt.show()
+    st.pyplot(fig)
 
     # Create Word Cloud
     try:
@@ -457,75 +446,75 @@ def create_visualizations(monthly_analysis, overall_stats, hourly_messages, pers
         plt.axis('off')
         plt.title('Word Cloud - Most Frequently Used Words', fontsize=16, fontweight='bold', pad=20)
         plt.tight_layout()
-        plt.savefig(f'{output_dir}/word_cloud.png', dpi=300, bbox_inches='tight')
-        plt.show()
+
+        st.pyplot(plt.gcf())
 
     except Exception as e:
-        print(f"Note: Could not generate word cloud. Install wordcloud package: pip install wordcloud")
-        print(f"Error: {e}")
+        st.write(f"Note: Could not generate word cloud. Install wordcloud package: pip install wordcloud")
+        st.write(f"Error: {e}")
 
 
 def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     """
     Print the analysis results in a formatted way including per-person statistics.
     """
-    print("=" * 80)
-    print("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS")
-    print("=" * 80)
+    st.write("=" * 80)
+    st.write("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS")
+    st.write("=" * 80)
 
     # Print overall statistics first
-    print("\n🌟 OVERALL STATISTICS")
-    print("=" * 50)
-    print(f"Total messages: {overall_stats['total_messages']:,}")
-    print(f"Total words analyzed: {overall_stats['total_words']:,}")
-    print(f"Total months analyzed: {overall_stats['total_months']}")
-    print(f"Approximate total days: {overall_stats['total_days']}")
-    print(f"Number of people in chat: {len(person_analysis)}")
-    print()
-    print("📊 AVERAGES:")
-    print(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}")
-    print(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}")
-    print(f"Average messages per day: {overall_stats['avg_messages_per_day']:.1f}")
-    print(f"Average words per day: {overall_stats['avg_words_per_day']:.1f}")
-    print()
-    print("🏆 TOP 10 MOST USED WORDS (OVERALL):")
+    st.write("\n🌟 OVERALL STATISTICS")
+    st.write("=" * 50)
+    st.write(f"Total messages: {overall_stats['total_messages']:,}")
+    st.write(f"Total words analyzed: {overall_stats['total_words']:,}")
+    st.write(f"Total months analyzed: {overall_stats['total_months']}")
+    st.write(f"Approximate total days: {overall_stats['total_days']}")
+    st.write(f"Number of people in chat: {len(person_analysis)}")
+    st.write()
+    st.write("📊 AVERAGES:")
+    st.write(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}")
+    st.write(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}")
+    st.write(f"Average messages per day: {overall_stats['avg_messages_per_day']:.1f}")
+    st.write(f"Average words per day: {overall_stats['avg_words_per_day']:.1f}")
+    st.write()
+    st.write("🏆 TOP 10 MOST USED WORDS (OVERALL):")
     for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
-        print(f"{i:2d}. {word:<15} ({count:,} times)")
+        st.write(f"{i:2d}. {word:<15} ({count:,} times)")
 
     # Print per-person statistics
-    print("\n" + "=" * 80)
-    print("PER-PERSON STATISTICS")
-    print("=" * 80)
+    st.write("\n" + "=" * 80)
+    st.write("PER-PERSON STATISTICS")
+    st.write("=" * 80)
 
     # Sort people by message count (descending)
     sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
 
     for person, data in sorted_people:
-        print(f"\n👤 {person}")
-        print("-" * 50)
-        print(f"Total messages: {data['total_messages']:,}")
-        print(f"Total words: {data['total_words']:,}")
-        print(f"Average words per message: {data['avg_words_per_message']:.1f}")
-        print(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%")
-        print("\nTop 10 most used words:")
+        st.write(f"\n👤 {person}")
+        st.write("-" * 50)
+        st.write(f"Total messages: {data['total_messages']:,}")
+        st.write(f"Total words: {data['total_words']:,}")
+        st.write(f"Average words per message: {data['avg_words_per_message']:.1f}")
+        st.write(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%")
+        st.write("\nTop 10 most used words:")
 
         for i, (word, count) in enumerate(data['top_words'], 1):
-            print(f"{i:2d}. {word:<15} ({count:,} times)")
+            st.write(f"{i:2d}. {word:<15} ({count:,} times)")
 
     # Print hourly analysis
     if hourly_messages:
-        print("\n🕐 HOURLY ACTIVITY:")
-        print("=" * 50)
+        st.write("\n🕐 HOURLY ACTIVITY:")
+        st.write("=" * 50)
         sorted_hours = sorted(hourly_messages.keys())
         peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
-        print(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)")
-        print("\nMessages by hour:")
+        st.write(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)")
+        st.write("\nMessages by hour:")
         for hour in sorted_hours:
-            print(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages")
+            st.write(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages")
 
-    print("\n" + "=" * 80)
-    print("MONTHLY BREAKDOWN")
-    print("=" * 80)
+    st.write("\n" + "=" * 80)
+    st.write("MONTHLY BREAKDOWN")
+    st.write("=" * 80)
 
     # Sort months chronologically
     sorted_months = sorted(monthly_analysis.keys())
@@ -537,42 +526,25 @@ def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_anal
         month_obj = datetime.strptime(month, '%Y-%m')
         readable_month = month_obj.strftime('%B %Y')
 
-        print(f"\n📅 {readable_month}")
-        print("-" * 40)
-        print(f"Total messages: {data['total_messages']:,}")
-        print(f"Total words analyzed: {data['total_words']:,}")
-        print("\nTop 10 most used words:")
+        st.write(f"\n📅 {readable_month}")
+        st.write("-" * 40)
+        st.write(f"Total messages: {data['total_messages']:,}")
+        st.write(f"Total words analyzed: {data['total_words']:,}")
+        st.write("\nTop 10 most used words:")
 
         for i, (word, count) in enumerate(data['top_words'], 1):
-            print(f"{i:2d}. {word:<15} ({count:,} times)")
+            st.write(f"{i:2d}. {word:<15} ({count:,} times)")
 
-        print()
-
-
-FILE_PATH = "test_chat.txt"  # Relative path
-OUTPUT_DIR = "output"  # Will create output folder in current directory
+        st.write()
 
 
-def main():
-    """
-    Main function to run the chat analysis.
-    """
-    file_path = FILE_PATH
-    output_dir = OUTPUT_DIR
 
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    print(f"Analyzing chat transcript: {file_path}")
-    print("Processing...")
-
-    # Parse the chat transcript
+def start_analysis(lines):
     monthly_messages, hourly_messages, person_messages, person_monthly_messages, person_message_counts = parse_chat_transcript(
-        file_path)
-
+        lines)
 
     if not monthly_messages:
-        print("No messages found or error reading file.")
+        st.write("No messages found or error reading file.")
         return
 
     # Analyze word frequency
@@ -588,95 +560,65 @@ def main():
     print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis)
 
     # Create visualizations
-    print("\nGenerating visualizations...")
-    create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis, output_dir)
+    st.write("\nGenerating visualizations...")
+    create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis)
 
-    # Save results to file
-    output_file = os.path.join(output_dir, "chat_analysis_results.txt")
 
-    try:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS\n")
-            f.write("=" * 80 + "\n\n")
+def main():
+    """
+    Main function to run the chat analysis.
+    """
+    # file_path = FILE_PATH
+    # output_dir = OUTPUT_DIR
 
-            # Write overall statistics
-            f.write("OVERALL STATISTICS\n")
-            f.write("=" * 50 + "\n")
-            f.write(f"Total messages: {overall_stats['total_messages']:,}\n")
-            f.write(f"Total words analyzed: {overall_stats['total_words']:,}\n")
-            f.write(f"Total months analyzed: {overall_stats['total_months']}\n")
-            f.write(f"Approximate total days: {overall_stats['total_days']}\n")
-            f.write(f"Number of people in chat: {len(person_analysis)}\n")
-            f.write("\nAVERAGES:\n")
-            f.write(f"Average messages per month: {overall_stats['avg_messages_per_month']:.1f}\n")
-            f.write(f"Average words per month: {overall_stats['avg_words_per_month']:.1f}\n")
-            f.write(f"Average messages per day: {overall_stats['avg_messages_per_day']:.1f}\n")
-            f.write(f"Average words per day: {overall_stats['avg_words_per_day']:.1f}\n")
-            f.write("\nTOP 10 MOST USED WORDS (OVERALL):\n")
-            for i, (word, count) in enumerate(overall_stats['top_overall_words'], 1):
-                f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
+    # Create output directory if it doesn't exist
+    # os.makedirs(output_dir, exist_ok=True)
 
-            # Write per-person statistics
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("PER-PERSON STATISTICS\n")
-            f.write("=" * 80 + "\n")
 
-            sorted_people = sorted(person_analysis.items(), key=lambda x: x[1]['total_messages'], reverse=True)
-            for person, data in sorted_people:
-                f.write(f"\n{person}\n")
-                f.write("-" * 50 + "\n")
-                f.write(f"Total messages: {data['total_messages']:,}\n")
-                f.write(f"Total words: {data['total_words']:,}\n")
-                f.write(f"Average words per message: {data['avg_words_per_message']:.1f}\n")
-                f.write(f"Message share: {(data['total_messages'] / overall_stats['total_messages'] * 100):.1f}%\n")
-                f.write("Top 10 most used words:\n")
 
-                for i, (word, count) in enumerate(data['top_words'], 1):
-                    f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
-                f.write("\n")
+    st.title("📱 WhatsApp Chat Analyzer")
+    st.write("")
+    st.write("")
+    st.warning("PLEASE NOTICE, DO NOT SHARE SENSITIVE INFORMATION.")
+    st.warning("IT SHOULD ALL RUN LOCALLY ON YOUR BROWSER, BUT I AM NOT RESPONSIBLE FOR STREAMLIT DOING SOMETHING TO INPUTTED DATA")
+    st.warning("IF YOU WANT TO BE 100 PERCENT SURE, DOWNLOAD GITHUB REPOSITORY AND RUN LOCALLY OR USE THE BRANCH NOT FOR STREAMLIT :))")
+    st.warning("On Streamlit Cloud, uploaded files may be temporarily stored on Streamlit’s servers. For sensitive data, run this app locally")
+    st.warning("AGAIN, THE CREATOR OF THIS APP TAKES NO RESPONSABILITY IN SENSITIVE DATA SHARED BEING USED BY STREAMLIT")
+    st.write("for demo - click use demo file button")
+    st.write("")
+    st.write("")
 
-            # Write hourly analysis
-            if hourly_messages:
-                f.write("\nHOURLY ACTIVITY:\n")
-                f.write("=" * 50 + "\n")
-                sorted_hours = sorted(hourly_messages.keys())
-                peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k])
-                f.write(f"Most active hour: {peak_hour:02d}:00 ({hourly_messages[peak_hour]:,} messages)\n")
-                f.write("\nMessages by hour:\n")
-                for hour in sorted_hours:
-                    f.write(f"{hour:02d}:00 - {hourly_messages[hour]:,} messages\n")
+    st.title("Start Analysis: ")
 
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("MONTHLY BREAKDOWN\n")
-            f.write("=" * 80 + "\n\n")
+    uploaded_file = st.file_uploader("Upload WhatsApp Chat (.txt)", type="txt")
+    lines = None
+    if uploaded_file:
+        lines = uploaded_file.getvalue().decode("utf-8").splitlines()
+    else:
+        st.write("Please upload a whatsapp chat export without media :)")
+        use_demo = st.button("or use Demo File")
+        if use_demo:
+            try:
+                with open("test_chat.txt", "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except FileNotFoundError:
+                st.error("Error loading demo chat :(")
 
-            sorted_months = sorted(monthly_analysis.keys())
-            for month in sorted_months:
-                data = monthly_analysis[month]
-                month_obj = datetime.strptime(month, '%Y-%m')
-                readable_month = month_obj.strftime('%B %Y')
+    if lines:
+        start_analysis(lines)
+    st.write("")
+    st.write("")
+    st.write("")
+    st.write("")
+    st.warning("PLEASE NOTICE, DO NOT SHARE SENSITIVE INFORMATION.")
+    st.warning("IT SHOULD ALL RUN LOCALLY ON YOUR BROWSER, BUT I AM NOT RESPONSIBLE FOR STREAMLIT DOING SOMETHING TO INPUTTED DATA")
+    st.warning("IF YOU WANT TO BE 100 PERCENT SURE, DOWNLOAD GITHUB REPOSITORY AND RUN LOCALLY OR USE THE BRANCH NOT FOR STREAMLIT :))")
+    st.warning("On Streamlit Cloud, uploaded files may be temporarily stored on Streamlit’s servers. For sensitive data, run this app locally")
+    st.warning("AGAIN, THE CREATOR OF THIS APP TAKES NO RESPONSABILITY IN SENSITIVE DATA SHARED BEING USED BY STREAMLIT")
 
-                f.write(f"{readable_month}\n")
-                f.write("-" * 40 + "\n")
-                f.write(f"Total messages: {data['total_messages']:,}\n")
-                f.write(f"Total words analyzed: {data['total_words']:,}\n")
-                f.write("Top 10 most used words:\n")
-
-                for i, (word, count) in enumerate(data['top_words'], 1):
-                    f.write(f"{i:2d}. {word:<15} ({count:,} times)\n")
-
-                f.write("\n")
-
-        print(f"\nResults saved to: {output_file}")
-        print(f"Visualizations saved to: {output_dir}")
-        print("Files created:")
-        print("- chat_analysis_dashboard.png")
-        print("- word_cloud.png")
-        print("- chat_analysis_results.txt")
-
-    except Exception as e:
-        print(f"Error writing results file: {e}")
 
 
 if __name__ == "__main__":
     main()
+
+# to run locally do  streamlit run analyzer.py
