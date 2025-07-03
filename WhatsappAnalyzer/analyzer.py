@@ -477,7 +477,7 @@ def main():
         use_demo = st.button("or use Demo File")
         if use_demo:
             try:
-                with open("test_chat.txt", "r", encoding="utf-8") as f:
+                with open("WhatsappChatAnalyzer/WhatsappAnalyzer/test_chat.txt", "r", encoding="utf-8") as f:
                     lines = f.readlines()
             except FileNotFoundError:
                 st.error("Error loading demo chat :(")
