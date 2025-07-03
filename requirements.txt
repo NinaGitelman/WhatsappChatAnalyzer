@@ -6,3 +6,4 @@ numpy
 plotly
 wordcloud
 statsmodels
+test_chat.txt
