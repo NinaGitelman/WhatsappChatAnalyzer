@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from wordcloud import WordCloud
 import streamlit as st
-
+import plotly.express as px
 
 def is_system_message(line):
     whatsapp_phrases = ["<Media omitted>", "You deleted this message", "This message was edited",
@@ -206,253 +206,120 @@ def analyze_overall_statistics(monthly_messages, person_message_counts):
 
 
 def create_visualizations(monthly_analysis, overall_stats, hourly_messages, person_analysis):
-    """
-    Create various visualizations of the chat data including per-person statistics.
-    """
-    # Set style for better-looking plots
-    plt.style.use('seaborn-v0_8')
-    sns.set_palette("husl")
+    st.subheader("📊 Chat Visualizations")
 
-    # Create figure with subplots
-    fig = plt.figure(figsize=(24, 28))
-
-    # Prepare data for plotting
+    # --- Monthly Data ---
     sorted_months = sorted(monthly_analysis.keys())
     month_dates = [datetime.strptime(month, '%Y-%m') for month in sorted_months]
-    messages_per_month = [monthly_analysis[month]['total_messages'] for month in sorted_months]
-    words_per_month = [monthly_analysis[month]['total_words'] for month in sorted_months]
     month_labels = [date.strftime('%b %Y') for date in month_dates]
 
-    # 1. Messages per Month (Line Chart)
-    plt.subplot(4, 3, 1)
-    plt.plot(month_dates, messages_per_month, marker='o', linewidth=2, markersize=6)
-    plt.title('Messages per Month', fontsize=14, fontweight='bold')
-    plt.xlabel('Month')
-    plt.ylabel('Number of Messages')
-    plt.xticks(rotation=45)
-    plt.grid(True, alpha=0.3)
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    df_monthly = pd.DataFrame({
+        "Month": month_labels,
+        "Date": month_dates,
+        "Messages": [monthly_analysis[m]["total_messages"] for m in sorted_months],
+        "Words": [monthly_analysis[m]["total_words"] for m in sorted_months],
+    })
 
-    # 2. Words per Month (Bar Chart)
-    plt.subplot(4, 3, 2)
-    bars = plt.bar(range(len(month_labels)), words_per_month, alpha=0.7)
-    plt.title('Words per Month', fontsize=14, fontweight='bold')
-    plt.xlabel('Month')
-    plt.ylabel('Number of Words')
-    plt.xticks(range(len(month_labels)), month_labels, rotation=45)
-    plt.grid(True, alpha=0.3, axis='y')
+    # Messages per Month
+    st.plotly_chart(px.line(df_monthly, x="Date", y="Messages", markers=True,
+                            title="Messages per Month"), use_container_width=True)
 
-    # Add value labels on bars
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2., height + max(words_per_month) * 0.01,
-                 f'{int(height):,}', ha='center', va='bottom', fontsize=8)
+    # Words per Month
+    st.plotly_chart(px.bar(df_monthly, x="Month", y="Words",
+                           title="Words per Month"), use_container_width=True)
 
-    # 3. Top 10 Overall Words (Horizontal Bar Chart)
-    plt.subplot(4, 3, 3)
-    words = [word for word, count in overall_stats['top_overall_words']]
-    counts = [count for word, count in overall_stats['top_overall_words']]
-    y_pos = range(len(words))
+    # Average Words per Message per Month
+    df_monthly["Avg Words per Message"] = df_monthly.apply(
+        lambda row: row["Words"] / row["Messages"] if row["Messages"] > 0 else 0, axis=1)
+    st.plotly_chart(px.line(df_monthly, x="Date", y="Avg Words per Message", markers=True,
+                            title="Average Words per Message (Monthly)"), use_container_width=True)
 
-    bars = plt.barh(y_pos, counts, alpha=0.7)
-    plt.title('Top 10 Most Used Words (Overall)', fontsize=14, fontweight='bold')
-    plt.xlabel('Frequency')
-    plt.yticks(y_pos, words)
-    plt.gca().invert_yaxis()
-    plt.grid(True, alpha=0.3, axis='x')
+    # Messages vs. Words per Month (Scatter + Trendline)
+    st.plotly_chart(px.scatter(df_monthly, x="Messages", y="Words", trendline="ols",
+                               title="Messages vs. Words per Month"), use_container_width=True)
 
-    # Add value labels
-    for i, bar in enumerate(bars):
-        width = bar.get_width()
-        plt.text(width + max(counts) * 0.01, bar.get_y() + bar.get_height() / 2.,
-                 f'{int(width):,}', ha='left', va='center', fontsize=9)
+    # Cumulative Messages Over Time
+    df_monthly["Cumulative Messages"] = df_monthly["Messages"].cumsum()
+    st.plotly_chart(px.area(df_monthly, x="Date", y="Cumulative Messages",
+                            title="Cumulative Messages Over Time"), use_container_width=True)
 
-    # 4. Messages vs Words Correlation
-    plt.subplot(4, 3, 4)
-    plt.scatter(messages_per_month, words_per_month, alpha=0.7, s=60)
-    plt.title('Messages vs Words per Month', fontsize=14, fontweight='bold')
-    plt.xlabel('Messages per Month')
-    plt.ylabel('Words per Month')
-    plt.grid(True, alpha=0.3)
+    # --- Hourly Data ---
+    df_hours = pd.DataFrame({
+        "Hour": list(hourly_messages.keys()),
+        "Messages": list(hourly_messages.values())
+    }).sort_values("Hour")
 
-    # Add trend line
-    if len(messages_per_month) > 1:
-        z = np.polyfit(messages_per_month, words_per_month, 1)
-        p = np.poly1d(z)
-        plt.plot(messages_per_month, p(messages_per_month), "r--", alpha=0.8)
+    df_hours["Label"] = df_hours["Hour"].apply(lambda h: f"{h:02d}:00")
+    st.plotly_chart(px.bar(df_hours, x="Label", y="Messages",
+                           title="Messages by Hour of Day"), use_container_width=True)
 
-    # 5. Messages by Hour of Day
-    plt.subplot(4, 3, 5)
-    hours = sorted(hourly_messages.keys())
-    hour_counts = [hourly_messages[hour] for hour in hours]
-
-    bars = plt.bar(hours, hour_counts, alpha=0.7, color='orange')
-    plt.title('Messages by Hour of Day', fontsize=14, fontweight='bold')
-    plt.xlabel('Hour of Day')
-    plt.ylabel('Number of Messages')
-    plt.xticks(hours[::2], [f"{hour:02d}:00" for hour in hours[::2]], rotation=45)
-    plt.grid(True, alpha=0.3, axis='y')
-
-    # Add value labels on bars for peak hours
-    max_count = max(hour_counts) if hour_counts else 0
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        if height > max_count * 0.7:
-            plt.text(bar.get_x() + bar.get_width() / 2., height + max_count * 0.01,
-                     f'{int(height):,}', ha='center', va='bottom', fontsize=8)
-
-    # 6. Average Words per Message
-    plt.subplot(4, 3, 6)
-    avg_words_per_msg = [words_per_month[i] / messages_per_month[i] if messages_per_month[i] > 0 else 0
-                         for i in range(len(messages_per_month))]
-
-    plt.plot(month_dates, avg_words_per_msg, marker='s', linewidth=2, markersize=6, color='green')
-    plt.title('Average Words per Message', fontsize=14, fontweight='bold')
-    plt.xlabel('Month')
-    plt.ylabel('Words per Message')
-    plt.xticks(rotation=45)
-    plt.grid(True, alpha=0.3)
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-
-    # 7. Messages per Person (Bar Chart)
-    plt.subplot(4, 3, 7)
+    # --- Person Analysis ---
     person_names = list(person_analysis.keys())
-    person_message_counts = [person_analysis[person]['total_messages'] for person in person_names]
+    df_person = pd.DataFrame({
+        "Person": person_names,
+        "Messages": [person_analysis[p]["total_messages"] for p in person_names],
+        "Words": [person_analysis[p]["total_words"] for p in person_names],
+        "Avg Words per Message": [person_analysis[p]["avg_words_per_message"] for p in person_names],
+    })
 
-    bars = plt.bar(range(len(person_names)), person_message_counts, alpha=0.7, color='purple')
-    plt.title('Total Messages per Person', fontsize=14, fontweight='bold')
-    plt.xlabel('Person')
-    plt.ylabel('Number of Messages')
-    plt.xticks(range(len(person_names)), person_names, rotation=45)
-    plt.grid(True, alpha=0.3, axis='y')
+    st.plotly_chart(px.bar(df_person, x="Person", y="Messages",
+                           title="Total Messages per Person"), use_container_width=True)
 
-    # Add value labels on bars
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_message_counts) * 0.01,
-                 f'{int(height):,}', ha='center', va='bottom', fontsize=8)
+    st.plotly_chart(px.bar(df_person, x="Person", y="Words",
+                           title="Total Words per Person"), use_container_width=True)
 
-    # 8. Words per Person (Bar Chart)
-    plt.subplot(4, 3, 8)
-    person_word_counts = [person_analysis[person]['total_words'] for person in person_names]
+    st.plotly_chart(px.bar(df_person, x="Person", y="Avg Words per Message",
+                           title="Average Words per Message by Person"), use_container_width=True)
 
-    bars = plt.bar(range(len(person_names)), person_word_counts, alpha=0.7, color='teal')
-    plt.title('Total Words per Person', fontsize=14, fontweight='bold')
-    plt.xlabel('Person')
-    plt.ylabel('Number of Words')
-    plt.xticks(range(len(person_names)), person_names, rotation=45)
-    plt.grid(True, alpha=0.3, axis='y')
+    st.plotly_chart(px.pie(df_person, names="Person", values="Messages",
+                           title="Message Share by Person"), use_container_width=True)
 
-    # Add value labels on bars
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_word_counts) * 0.01,
-                 f'{int(height):,}', ha='center', va='bottom', fontsize=8)
+    # --- Top Words (Horizontal Bar) ---
+    top_words = overall_stats['top_overall_words']
+    df_words = pd.DataFrame(top_words[:10], columns=["Word", "Count"])
+    st.plotly_chart(px.bar(df_words, x="Count", y="Word", orientation='h',
+                           title="Top 10 Most Used Words"), use_container_width=True)
 
-    # 9. Average Words per Message by Person
-    plt.subplot(4, 3, 9)
-    person_avg_words = [person_analysis[person]['avg_words_per_message'] for person in person_names]
+    # --- Summary Stats ---
+    peak_hour = max(hourly_messages, key=hourly_messages.get) if hourly_messages else "N/A"
+    peak_hour_count = hourly_messages.get(peak_hour, 0)
 
-    bars = plt.bar(range(len(person_names)), person_avg_words, alpha=0.7, color='coral')
-    plt.title('Average Words per Message by Person', fontsize=14, fontweight='bold')
-    plt.xlabel('Person')
-    plt.ylabel('Average Words per Message')
-    plt.xticks(range(len(person_names)), person_names, rotation=45)
-    plt.grid(True, alpha=0.3, axis='y')
-
-    # Add value labels on bars
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2., height + max(person_avg_words) * 0.01,
-                 f'{height:.1f}', ha='center', va='bottom', fontsize=8)
-
-    # 10. Cumulative Messages Over Time
-    plt.subplot(4, 3, 10)
-    cumulative_messages = np.cumsum(messages_per_month)
-    plt.plot(month_dates, cumulative_messages, marker='o', linewidth=3, markersize=6, color='purple')
-    plt.fill_between(month_dates, cumulative_messages, alpha=0.3, color='purple')
-    plt.title('Cumulative Messages Over Time', fontsize=14, fontweight='bold')
-    plt.xlabel('Month')
-    plt.ylabel('Cumulative Messages')
-    plt.xticks(rotation=45)
-    plt.grid(True, alpha=0.3)
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-
-    # 11. Message Share by Person (Pie Chart)
-    plt.subplot(4, 3, 11)
-    colors = plt.cm.Set3(np.linspace(0, 1, len(person_names)))
-    wedges, texts, autotexts = plt.pie(person_message_counts, labels=person_names, autopct='%1.1f%%',
-                                       colors=colors, startangle=90)
-    plt.title('Message Share by Person', fontsize=14, fontweight='bold')
-
-    # 12. Summary Statistics Box
-    plt.subplot(4, 3, 12)
-    plt.axis('off')
-
-    # Find peak hour
-    peak_hour = max(hourly_messages.keys(), key=lambda k: hourly_messages[k]) if hourly_messages else 0
-    peak_hour_count = hourly_messages[peak_hour] if hourly_messages else 0
-
-    # Find most active person
-    most_active_person = max(person_analysis.keys(),
-                             key=lambda k: person_analysis[k]['total_messages']) if person_analysis else "N/A"
+    most_active_person = max(person_analysis, key=lambda k: person_analysis[k]['total_messages']) if person_analysis else "N/A"
     most_active_count = person_analysis[most_active_person]['total_messages'] if person_analysis else 0
 
-    # Create summary text
-    summary_text = f"""
-    CHAT SUMMARY STATISTICS
+    st.info(f"""
+    **📌 Chat Summary**
+    - **Total Messages**: {overall_stats['total_messages']:,}
+    - **Total Words**: {overall_stats['total_words']:,}
+    - **Months Analyzed**: {overall_stats['total_months']}
+    - **People in Chat**: {len(person_analysis)}
 
-    Total Messages: {overall_stats['total_messages']:,}
-    Total Words: {overall_stats['total_words']:,}
-    Months Analyzed: {overall_stats['total_months']}
-    People in Chat: {len(person_analysis)}
+    **📈 Averages**
+    - Messages/Month: {overall_stats['avg_messages_per_month']:.1f}
+    - Words/Month: {overall_stats['avg_words_per_month']:.1f}
+    - Messages/Day: {overall_stats['avg_messages_per_day']:.1f}
+    - Words/Day: {overall_stats['avg_words_per_day']:.1f}
 
-    AVERAGES:
-    • Messages/Month: {overall_stats['avg_messages_per_month']:.1f}
-    • Words/Month: {overall_stats['avg_words_per_month']:.1f}
-    • Messages/Day: {overall_stats['avg_messages_per_day']:.1f}
-    • Words/Day: {overall_stats['avg_words_per_day']:.1f}
+    **🔝 Top Word**: "{overall_stats['top_overall_words'][0][0]}" used {overall_stats['top_overall_words'][0][1]:,} times  
+    **⏰ Peak Hour**: {peak_hour:02d}:00 with {peak_hour_count:,} messages  
+    **💬 Most Active**: {most_active_person} with {most_active_count:,} messages
+    """)
 
-    TOP WORD: "{overall_stats['top_overall_words'][0][0]}"
-    Used {overall_stats['top_overall_words'][0][1]:,} times
-
-    PEAK HOUR: {peak_hour:02d}:00
-    {peak_hour_count:,} messages
-
-    MOST ACTIVE: {most_active_person}
-    {most_active_count:,} messages
-    """
-
-    plt.text(0.1, 0.9, summary_text, transform=plt.gca().transAxes, fontsize=10,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
-
-    plt.tight_layout()
-    st.pyplot(fig)
-
-    # Create Word Cloud
+    # --- Word Cloud ---
     try:
-        plt.figure(figsize=(12, 8))
-
-        # Prepare text for word cloud
-        word_freq_dict = dict(overall_stats['top_overall_words'][:50])  # Top 50 words for better cloud
-
-        wordcloud = WordCloud(width=1200, height=800,
-                              background_color='white',
-                              max_words=50,
-                              colormap='viridis',
+        word_freq_dict = dict(overall_stats['top_overall_words'][:50])
+        wordcloud = WordCloud(width=1200, height=800, background_color='white',
+                              max_words=50, colormap='viridis',
                               relative_scaling=0.5).generate_from_frequencies(word_freq_dict)
 
+        plt.figure(figsize=(12, 8))
         plt.imshow(wordcloud, interpolation='bilinear')
         plt.axis('off')
         plt.title('Word Cloud - Most Frequently Used Words', fontsize=16, fontweight='bold', pad=20)
-        plt.tight_layout()
-
         st.pyplot(plt.gcf())
-
     except Exception as e:
-        st.write(f"Note: Could not generate word cloud. Install wordcloud package: pip install wordcloud")
+        st.error("⚠️ Could not generate word cloud. Make sure the `wordcloud` package is installed.")
         st.write(f"Error: {e}")
-
 
 def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_analysis):
     """
