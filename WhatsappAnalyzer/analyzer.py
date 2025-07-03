@@ -336,6 +336,12 @@ def print_analysis(monthly_analysis, overall_stats, hourly_messages, person_anal
     """
     Print the analysis results in a formatted way including per-person statistics.
     """
+    st.write("")
+    st.write("")
+    st.write("")
+    st.write("")
+    st.write("")
+
     st.write("=" * 80)
     st.write("CHAT TRANSCRIPT WORD FREQUENCY ANALYSIS")
     st.write("=" * 80)
